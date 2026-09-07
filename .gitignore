@@ -1,5 +1,3 @@
 __pycache__/
 *.pyc
-gr1_eval_output/
 slurm_out/
-sweeps/

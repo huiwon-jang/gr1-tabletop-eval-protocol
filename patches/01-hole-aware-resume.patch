@@ -1,0 +1,89 @@
+# Hole-aware resume for chunked (ENV_LAYOUT) runs.
+#
+# A repair pass re-runs a handful of episodes with --n_envs 1 while keeping
+# ENV_LAYOUT at the original lane count, so that episode seeds stay identical.
+# Upstream gates hole-aware resume on n_envs > 1 alone, so that pass falls back
+# to global counting: instead of refilling the quarantined slots it appends new
+# episodes past the per-lane cap, the tree grows beyond its episode budget and
+# the run's original success rate silently changes.
+#
+# Cut against Isaac-GR00T with the WAM DiT4DiT kitchen eval scripts.
+
+diff --git a/gr00t/eval/rollout_policy.py b/gr00t/eval/rollout_policy.py
+index 53b744a5..b036041a 100644
+--- a/gr00t/eval/rollout_policy.py
++++ b/gr00t/eval/rollout_policy.py
+@@ -333,6 +333,7 @@ def run_rollout_gymnasium_policy(
+     robocasa_split: str = "pretrain",
+     verbose: bool = False,
+     env_idx_offset: int = 0,
++    env_layout: int = 0,
+ ) -> Any:
+     """Run policy rollouts in parallel environments.
+ 
+@@ -363,7 +364,7 @@ def run_rollout_gymnasium_policy(
+     # faster env can over-record before the loop guard fires. Mirrors dev-n1d6's
+     # `max_episodes_per_env` knob but with auto-compute so the caller doesn't
+     # need to thread it through.
+-    if n_envs > 1 and wrapper_configs.video.max_episodes_per_env is None:
++    if (n_envs > 1 or env_layout > 0) and wrapper_configs.video.max_episodes_per_env is None:
+         wrapper_configs.video.max_episodes_per_env = n_episodes // n_envs
+     print(f"Running collecting {n_episodes} episodes for {env_name} with {n_envs} vec envs")
+ 
+@@ -374,7 +375,11 @@ def run_rollout_gymnasium_policy(
+     print(f"[i] Detected existing_successes: {existing_successes}")
+     # Explicit per-env work list. None for the single-env path, which keeps counting up.
+     env_missing_ids: Optional[List[List[int]]] = None
+-    if n_envs > 1 :
++    if n_envs > 1 or env_layout > 0:
++        # An ENV_LAYOUT chunk can arrive with n_envs=1 (the repair pass, which uses a
++        # single env to avoid the view swap). Episode indices are still per-lane
++        # 0..PER_ENV-1 there, so hole-aware resume is required: without it the pass
++        # appends ep10+ instead of refilling the gaps and the original score changes.
+         target_per_env = int(n_episodes / n_envs)
+         target_total = n_episodes
+ 
+@@ -850,6 +854,7 @@ def run_gr00t_sim_policy(
+     verbose: bool = False,
+     save_frames: bool = False,
+     env_idx_offset: int = 0,
++    env_layout: int = 0,
+ ):
+     embodiment_tag = get_embodiment_tag_from_env_name(env_name)
+ 
+@@ -910,6 +915,7 @@ def run_gr00t_sim_policy(
+         robocasa_split=robocasa_split,
+         verbose=verbose,
+         env_idx_offset=env_idx_offset,
++        env_layout=env_layout,
+     )
+     print("Video saved to: ", wrapper_configs.video.video_dir)
+     return results
+@@ -932,6 +938,9 @@ if __name__ == "__main__":
+         default="gr1_unified/PosttrainPnPNovelFromPlateToBowlSplitA_GR1ArmsAndWaistFourierHands_Env",
+     )
+     parser.add_argument("--n_envs", type=int, default=8)
++    parser.add_argument("--env_layout", type=int, default=0,
++                        help="ENV_LAYOUT total env count (chunked mode). >0 enables hole-aware "
++                             "resume even at --n_envs 1 (repair). 0 = basic global counting.")
+     parser.add_argument("--n_action_steps", type=int, default=8)
+     parser.add_argument("--video_dir", type=str, default=None)
+     parser.add_argument("--seed", type=int, default=42)
+@@ -970,6 +979,7 @@ if __name__ == "__main__":
+         policy_client_host=args.policy_client_host,
+         policy_client_port=args.policy_client_port,
+         n_envs=args.n_envs,
++        env_layout=args.env_layout,
+         n_action_steps=args.n_action_steps,
+         video_dir=args.video_dir,
+         seed=args.seed,
+--- a/run_scripts/eval/robocasa/eval_wam_dit4dit_kitchen.sh
++++ b/run_scripts/eval/robocasa/eval_wam_dit4dit_kitchen.sh
+@@ -672,6 +673,7 @@ run_rollout_chunk() {  # $1=n_envs  $2=env_idx_offset  $3=n_episodes  $4=log_fil
+       --n_action_steps "$N_ACTION_STEPS" \
+       --n_envs "$1" \
+       --env_idx_offset "$2" \
++      --env_layout "${ENV_LAYOUT:-0}" \
+       --video_dir "$OUTPUT_DIR" \
+       --seed "$SEED" \
+       ${SAVE_FRAMES:+--save_frames} \
