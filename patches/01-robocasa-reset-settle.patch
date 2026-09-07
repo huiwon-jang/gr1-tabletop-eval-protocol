@@ -1,7 +1,7 @@
-diff --git a/external_dependencies/robocasa-gr1-tabletop-tasks/robocasa/environments/tabletop/tabletop.py b/external_dependencies/robocasa-gr1-tabletop-tasks/robocasa/environments/tabletop/tabletop.py
-index c32104c8..e14feff4 100644
---- a/external_dependencies/robocasa-gr1-tabletop-tasks/robocasa/environments/tabletop/tabletop.py
-+++ b/external_dependencies/robocasa-gr1-tabletop-tasks/robocasa/environments/tabletop/tabletop.py
+diff --git a/robocasa/environments/tabletop/tabletop.py b/robocasa/environments/tabletop/tabletop.py
+index c32104c..e14feff 100644
+--- a/robocasa/environments/tabletop/tabletop.py
++++ b/robocasa/environments/tabletop/tabletop.py
 @@ -1090,6 +1090,51 @@ class Tabletop(ManipulationEnv, metaclass=TabletopEnvMeta):
                      l_elbow_pitch_range[0] * 0.1 + l_elbow_pitch_range[1] * 0.9
                  )
