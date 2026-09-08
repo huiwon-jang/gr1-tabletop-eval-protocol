@@ -36,20 +36,21 @@ per process, preserving the original score alongside the repaired one.
 
 ## Measured effect
 
-Sixteen checkpoint trees carried through to a converged repair (1,200 episodes
-each; the same weights, only the protocol changed):
+Twenty-one checkpoint trees carried through to a converged repair (1,200
+episodes each; the same weights, only the protocol changed):
 
 | | |
 |---|---|
-| episodes re-run | 433 |
-| outcomes that changed | 174 (40 %) |
-| mean score | **60.99 % → 61.86 %** |
-| per-tree change | median +1.00 pt, max +1.50 pt |
+| episodes re-run | 566 |
+| outcomes that changed | 236 (42 %) |
+| mean score | **62.25 % → 63.17 %** |
+| per-tree change | median +1.00 pt, max +1.50 pt, min +0.00 pt |
 
-The direction is systematic, not noise: 15 of 16 trees moved up or stayed put.
-Corrupted observations make a policy fail, so leaving them in place costs about
-**one point of kitchen score** — and costs it unevenly, since which episodes
-break differs per run.
+The direction is not merely systematic, it is one-sided: **all 21 trees moved up
+or stayed put, and no re-run of a swap-contaminated episode ever turned a
+success into a failure** (0 in 46). Corrupted observations make a policy fail,
+so leaving them in place costs about **one point of kitchen score** — and costs
+it unevenly, since which episodes break differs per run.
 
 After repair, a second scan finds **0.20 %** still flagged, and 38 of those 39
 episodes are one unrelated incident (a single eval run that wrote 38 damaged mp4
@@ -84,15 +85,26 @@ pixel difference, as long as macro continuity holds; and episodes shorter than
 so a legitimate success can be 16 frames long — judging those as damaged makes
 every repair cycle re-flag the same episodes and the loop never converges.
 
-**Flagged but different in kind:** `undecodable`, where ffmpeg reports a damaged
-bitstream. Error concealment makes the decoded pixels look plausible, so this is
-detected from ffmpeg's stderr rather than from the image. Note that a damaged
-*recording* is not evidence of a damaged *observation* — the success label is
-written by the environment, not read from the video. In the one tree whose
-flagged episodes were all `undecodable`, repair moved the score −0.17 pt, while
-every swap-dominated tree moved up. Re-running those episodes resamples an
-unseeded noise draw rather than fixing a corrupted input; treat the two classes
-separately if that distinction matters to you.
+**Detected but deliberately not repaired:** `undecodable`, where ffmpeg reports a
+damaged bitstream. Error concealment makes the decoded pixels look plausible, so
+this is detected from ffmpeg's stderr rather than from the image. It is recorded
+in the manifest under its own key and the episode keeps its original label.
+
+A damaged *recording* is not evidence of a damaged *observation*: the success
+label is written by the environment into the filename, never read back from the
+video. Re-running such an episode therefore discards a valid label and redraws
+an unseeded noise sample. The measured behaviour is unambiguous:
+
+| re-run class | success → failure | failure → success |
+|---|---|---|
+| swap-alt (33) | **0** | 18 |
+| sustained-nonphys (13) | **0** | 7 |
+| undecodable (44) | **13** | 1 |
+
+Damaged recordings are also biased toward successes (82 % of them, against 68 %
+for the tree as a whole) — `terminate_on_success` ends a solved episode
+abruptly, which is exactly when a trailer gets truncated. Re-running them
+regresses that set to the mean and destroys real successes.
 
 ## Install
 

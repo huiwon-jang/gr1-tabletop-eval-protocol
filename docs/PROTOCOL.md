@@ -91,14 +91,14 @@ concealed pixels.
 Of the flagged episodes whose classification was preserved, roughly 62 % were
 `swap-alt`, 25 % `sustained-nonphys`, 12 % `undecodable`.
 
-Sixteen trees carried through to a converged repair:
+Twenty-one trees carried through to a converged repair:
 
 | | |
 |---|---|
-| episodes re-run | 433 |
-| outcomes changed | 174 (40 %) |
-| mean score | 60.99 % → 61.86 % |
-| per-tree | median +1.00 pt, max +1.50 pt, 15 of 16 up or unchanged |
+| episodes re-run | 566 |
+| outcomes changed | 236 (42 %) |
+| mean score | 62.25 % → 63.17 % |
+| per-tree | median +1.00 pt, max +1.50 pt, **21 of 21 up or unchanged** |
 
 Corrupted observations cost roughly **one point of kitchen score**, in a
 direction that is systematic — a policy given scrambled views fails — but spread
@@ -160,10 +160,10 @@ second finds something. Mechanically running three cycles is not necessary.
 quarantined filenames are the only surviving record of the original outcomes,
 and the scanner rebuilds cycle 1 from them.
 
-## 8. A caveat on `undecodable`
+## 8. Why `undecodable` is detected but never repaired
 
-`undecodable` is flagged alongside the swap classes, but it is a different kind
-of defect and arguably should be handled separately.
+`undecodable` is a different kind of defect from the swap classes, and treating
+it the same way actively damages the score.
 
 A success/failure label is written by the environment into the filename; it is
 not read back from the video. A damaged mp4 therefore means the *recording*
@@ -172,7 +172,27 @@ such an episode discards a probably-valid label and draws a fresh sample — and
 because the extraction noise is not seeded, the same scene can produce a
 different outcome.
 
-The data shows this. In the one tree whose flagged episodes were all
-`undecodable`, repair moved the score −0.17 pt (6 episodes re-run, 2 flipped),
-while every swap-dominated tree moved up. If you care about the distinction,
-filter on `reason` and repair only `swap-alt` and `sustained-nonphys`.
+The measured behaviour separates the classes cleanly:
+
+| re-run class | n | success → failure | failure → success | net |
+|---|---|---|---|---|
+| swap-alt | 33 | **0** | 18 | +18 |
+| sustained-nonphys | 13 | **0** | 7 | +7 |
+| undecodable | 44 | **13** | 1 | −12 |
+
+Repairing a genuinely corrupted observation never turned a success into a
+failure — not once in 46 re-runs. Re-running a merely damaged recording did so
+13 times in 44.
+
+There is a mechanism behind the asymmetry. Damaged recordings are enriched in
+successes: 82 % of the `undecodable` episodes were successes, against 68 % for
+the trees as a whole. `terminate_on_success` ends a solved episode abruptly,
+which is precisely when a file's trailer is likely to be truncated. Re-running
+that success-enriched set regresses it to the mean, so the score falls.
+
+One tree showed this in isolation. Every episode it flagged was `undecodable`;
+repairing them moved it −0.17 pt, while every swap-dominated tree moved up.
+
+**The rule:** `undecodable` episodes are recorded in the manifest under their own
+key, left in the tree, and keep their original label. They are never quarantined
+and never re-run. With that rule applied, no tree in the measured set moves down.

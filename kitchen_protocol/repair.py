@@ -79,7 +79,7 @@ def task_order(args):
 
 def scan(args):
     root = run_dir(args)
-    rows = []
+    rows, undecodable = [], []
     for td in sorted(glob.glob(f"{root}/*_Env")):
         task = os.path.basename(td)
         for p in sorted(glob.glob(f"{td}/*.mp4")):
@@ -91,17 +91,26 @@ def scan(args):
             if reason is None:
                 continue
             stats = sig if isinstance(sig, dict) else {"med": -1, "gap": 0.0, "lag1m": 0.0}
-            rows.append({
+            rec = {
                 "task": task, "env": int(m[1]), "ep": int(m[2]),
                 "out_before": m[3], "mp4": os.path.basename(p),
                 "reason": reason, **stats,
-            })
+            }
+            # `undecodable` is recorded but never repaired. The success label is written
+            # by the environment into the filename, not read back from the video, so a
+            # damaged recording is not evidence of a damaged observation -- re-running
+            # discards a valid label and redraws an unseeded noise sample. Measured:
+            # swap-alt/sustained-nonphys flipped success->failure 0 times in 46 re-runs,
+            # undecodable flipped it 13 times in 44.
+            (undecodable if reason == "undecodable" else rows).append(rec)
 
-    json.dump({"run": args.run, "contaminated": rows},
+    json.dump({"run": args.run, "contaminated": rows, "undecodable": undecodable},
               open(f"{root}/swap_manifest.json", "w"), indent=1)
     cycles = _append_cycle(root, rows)
 
     print(f"[scan] {len(rows)} contaminated (cycle {cycles[-1]['n']})")
+    if undecodable:
+        print(f"[scan] {len(undecodable)} undecodable -- recorded only, original label kept")
     for r in rows:
         print(f"   {r['task'].replace('_PandaOmron_Env',''):<24} "
               f"env{r['env']}ep{r['ep']:<3} {r['out_before']:<8} "
